@@ -1,0 +1,21 @@
+{
+  "name": "@meridian/shared",
+  "version": "1.0.0",
+  "description": "Meridian shared types, validators, and constants — consumed by backend and frontend.",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "zod": "^3.22.4"
+  }
+}

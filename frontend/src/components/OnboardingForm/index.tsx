@@ -117,7 +117,7 @@ function formReducer(state: FormState, action: FormAction): FormState {
     case "SUBMIT_FAILURE":
       return {
         phase: "error",
-        fields: state.fields,
+        fields: state.phase === "success" ? EMPTY_FIELDS : state.fields,
         errors: action.fieldErrors ?? {},
         submitError: action.submitError,
       };
@@ -134,7 +134,7 @@ function formReducer(state: FormState, action: FormAction): FormState {
 interface FieldWrapperProps {
   id: string;
   label: string;
-  error?: string;
+  error?: string | undefined;
   required?: boolean;
   children: React.ReactNode;
 }
@@ -166,7 +166,7 @@ const FieldWrapper: React.FC<FieldWrapperProps> = ({
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   id: string;
-  error?: string;
+  error?: string | undefined;
 }
 
 const Input: React.FC<InputProps> = ({ id, error, ...rest }) => (
@@ -245,8 +245,10 @@ const OnboardingForm: React.FC = () => {
   const isDisabled =
     state.phase === "submitting" || state.phase === "success";
 
-  const currentFields =
-    state.phase === "success" ? EMPTY_FIELDS : state.fields;
+  const currentFields: InvestorFormValues =
+    state.phase === "success" || state.phase === "submitting"
+      ? EMPTY_FIELDS
+      : state.fields;
 
   const currentErrors: FieldErrors =
     state.phase === "idle" || state.phase === "error" ? state.errors : {};

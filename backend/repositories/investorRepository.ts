@@ -1,150 +1,146 @@
 /**
  * backend/repositories/investorRepository.ts
  *
- * All SQL that touches the `investors` table lives here.
+ * Data access layer for the `investors` table.
  *
- * Rules enforced in this file:
- *  – Every query uses positional parameters ($1, $2 …) — never string
- *    interpolation — to prevent SQL injection.
- *  – Return types are explicitly asserted on pg's QueryResult<T> so the
- *    compiler enforces that callers get a fully-typed InvestorRecord.
- *  – DatabaseError interception maps pg error codes to AppErrors so the
- *    route layer never needs to know about pg internals.
- *  – No `any` — `pg` types are used directly or via the PgDatabaseError
- *    type guard exported from pool.ts.
+ * Architecture notes:
+ *  – `IInvestorRepository` is the dependency-inversion interface.
+ *    The service layer and tests depend on this interface, never on the
+ *    concrete class directly.
+ *  – `PgInvestorRepository` is the production implementation backed by
+ *    the pg connection pool.
+ *  – All SQL uses positional parameters ($1…$n) — zero string interpolation
+ *    — to prevent SQL injection by construction.
+ *  – pg's `QueryResult<T>` is used with an explicit type parameter so the
+ *    TypeScript compiler enforces the returned row shape.
+ *  – pg error codes are intercepted here and mapped to typed `AppError`
+ *    instances; the service and route layers never inspect pg internals.
  */
 
 import type { QueryResult } from "pg";
 import { pool, isPgDatabaseError, PG_ERROR } from "../db/pool";
 import { AppError } from "../lib/AppError";
 import { logger } from "../lib/logger";
-import type { InvestorRecord, CreateInvestorInput } from "../types/domain";
+import type { InvestorRecord, CreateInvestorInput } from "@meridian/shared";
 
 // ─────────────────────────────────────────────────────────────
-//  INSERT – create a new investor
+//  Repository contract
+//  Depend on this interface, not on PgInvestorRepository directly.
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Inserts a validated investor record and returns the full persisted row.
- *
- * @throws {AppError} 409 DUPLICATE_EMAIL if the email already exists.
- * @throws {AppError} 500 INTERNAL_ERROR   for any other DB failure.
- */
-export async function createInvestor(
-  input: CreateInvestorInput
-): Promise<InvestorRecord> {
-  const sql = `
-    INSERT INTO investors (full_name, email, date_of_birth, country)
-    VALUES ($1, $2, $3, $4)
-    RETURNING
-      id,
-      full_name,
-      email,
-      date_of_birth :: TEXT  AS date_of_birth,
-      country,
-      status,
-      created_at :: TEXT     AS created_at,
-      updated_at :: TEXT     AS updated_at
-  `;
+export interface IInvestorRepository {
+  /**
+   * Persists a new investor and returns the full DB-generated record.
+   * @throws {AppError} 409 DUPLICATE_EMAIL on unique constraint violation.
+   * @throws {AppError} 400 CONSTRAINT_VIOLATION on other CHECK failures.
+   * @throws {AppError} 500 INTERNAL_ERROR on unexpected failures.
+   */
+  create(input: CreateInvestorInput): Promise<InvestorRecord>;
 
-  const params: [string, string, string, string] = [
-    input.full_name,
-    input.email,      // already lowercased by Zod transform
-    input.date_of_birth,
-    input.country,
-  ];
-
-  try {
-    const result: QueryResult<InvestorRecord> = await pool.query<InvestorRecord>(
-      sql,
-      params
-    );
-
-    const row = result.rows[0];
-    if (row === undefined) {
-      // Should never happen after a successful INSERT … RETURNING, but
-      // guard defensively to keep the return type non-nullable.
-      throw AppError.internal(new Error("INSERT RETURNING returned no rows"));
-    }
-
-    logger.info(
-      { investorId: row.id, country: row.country },
-      "investor.created"
-    );
-
-    return row;
-  } catch (err: unknown) {
-    if (isPgDatabaseError(err)) {
-      if (err.code === PG_ERROR.UNIQUE_VIOLATION) {
-        // The functional unique index on LOWER(email) fires here.
-        throw AppError.duplicateEmail();
-      }
-
-      if (err.code === PG_ERROR.CHECK_VIOLATION) {
-        // A DB-level CHECK constraint fired (e.g. dob 18+ or country format).
-        // This should never reach production if Zod validates first, but we
-        // surface it as a 400 rather than a 500 to aid debugging.
-        logger.warn({ constraint: err.constraint }, "investor.createCheckViolation");
-        throw new AppError(
-          400,
-          "CONSTRAINT_VIOLATION",
-          `Database constraint violated: ${err.constraint ?? "unknown"}.`,
-          { cause: err }
-        );
-      }
-    }
-
-    logger.error({ err }, "investor.createUnexpectedError");
-    throw AppError.internal(err);
-  }
+  /**
+   * Finds an investor by UUID primary key.
+   * Returns `null` when the row does not exist (route layer owns 404).
+   * @throws {AppError} 500 INTERNAL_ERROR on unexpected failures.
+   */
+  findById(id: string): Promise<InvestorRecord | null>;
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SELECT BY ID
+//  Production implementation (PostgreSQL via pg.Pool)
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Fetches a single investor by UUID primary key.
- *
- * Returns `null` when the row is not found (let the route layer decide
- * the HTTP status — keeps the repository transport-agnostic).
- *
- * @throws {AppError} 500 INTERNAL_ERROR for unexpected DB failures.
- */
-export async function findInvestorById(
-  id: string
-): Promise<InvestorRecord | null> {
-  const sql = `
-    SELECT
-      id,
-      full_name,
-      email,
-      date_of_birth :: TEXT  AS date_of_birth,
-      country,
-      status,
-      created_at :: TEXT     AS created_at,
-      updated_at :: TEXT     AS updated_at
-    FROM investors
-    WHERE id = $1
-    LIMIT 1
-  `;
+export class PgInvestorRepository implements IInvestorRepository {
+  async create(input: CreateInvestorInput): Promise<InvestorRecord> {
+    const sql = `
+      INSERT INTO investors (full_name, email, date_of_birth, country)
+      VALUES ($1, $2, $3, $4)
+      RETURNING
+        id,
+        full_name,
+        email,
+        date_of_birth :: TEXT  AS date_of_birth,
+        country,
+        status,
+        created_at :: TEXT     AS created_at,
+        updated_at :: TEXT     AS updated_at
+    `;
 
-  try {
-    const result: QueryResult<InvestorRecord> = await pool.query<InvestorRecord>(
-      sql,
-      [id]
-    );
+    // Zod's .toLowerCase() transform has already normalised the email.
+    const params: [string, string, string, string] = [
+      input.full_name,
+      input.email,
+      input.date_of_birth,
+      input.country,
+    ];
 
-    return result.rows[0] ?? null;
-  } catch (err: unknown) {
-    if (isPgDatabaseError(err) && err.code === PG_ERROR.INVALID_TEXT_REPRESENTATION) {
-      // pg raises 22P02 when a non-UUID string is cast to uuid internally.
-      // The route layer validates UUID format via Zod before this call,
-      // so this path is a belt-and-suspenders catch.
-      throw AppError.invalidUuid("id");
+    try {
+      const result: QueryResult<InvestorRecord> =
+        await pool.query<InvestorRecord>(sql, params);
+
+      const row = result.rows[0];
+      if (row === undefined) {
+        throw AppError.internal(
+          new Error("INSERT … RETURNING returned no rows unexpectedly")
+        );
+      }
+
+      return row;
+    } catch (err: unknown) {
+      if (isPgDatabaseError(err)) {
+        if (err.code === PG_ERROR.UNIQUE_VIOLATION) {
+          throw AppError.duplicateEmail();
+        }
+
+        if (err.code === PG_ERROR.CHECK_VIOLATION) {
+          logger.warn(
+            { constraint: err.constraint },
+            "investor.repository.checkViolation"
+          );
+          throw new AppError(
+            400,
+            "CONSTRAINT_VIOLATION",
+            `Database constraint violated: ${err.constraint ?? "unknown"}.`,
+            { cause: err }
+          );
+        }
+      }
+
+      logger.error({ err }, "investor.repository.createError");
+      throw AppError.internal(err);
     }
+  }
 
-    logger.error({ err, investorId: id }, "investor.findByIdUnexpectedError");
-    throw AppError.internal(err);
+  async findById(id: string): Promise<InvestorRecord | null> {
+    const sql = `
+      SELECT
+        id,
+        full_name,
+        email,
+        date_of_birth :: TEXT  AS date_of_birth,
+        country,
+        status,
+        created_at :: TEXT     AS created_at,
+        updated_at :: TEXT     AS updated_at
+      FROM investors
+      WHERE id = $1
+      LIMIT 1
+    `;
+
+    try {
+      const result: QueryResult<InvestorRecord> =
+        await pool.query<InvestorRecord>(sql, [id]);
+
+      return result.rows[0] ?? null;
+    } catch (err: unknown) {
+      if (
+        isPgDatabaseError(err) &&
+        err.code === PG_ERROR.INVALID_TEXT_REPRESENTATION
+      ) {
+        throw AppError.invalidUuid("id");
+      }
+
+      logger.error({ err, investorId: id }, "investor.repository.findByIdError");
+      throw AppError.internal(err);
+    }
   }
 }

@@ -1,32 +1,32 @@
 /**
  * backend/routes/investors.ts
  *
- * Express router for the investor resource.
+ * Thin HTTP adapter for the investor resource.
  *
- *   POST /api/v1/investors          → create a new investor (201)
- *   GET  /api/v1/investors/:id      → fetch an investor by UUID (200 / 404)
+ *   POST /api/v1/investors        → 201 Created
+ *   GET  /api/v1/investors/:id    → 200 OK | 404 Not Found
  *
- * Error handling contract
- * ───────────────────────
- * Route handlers NEVER call res.status(500) directly. All unexpected
- * errors are forwarded to Express's global error handler via next(err).
- * Only well-typed AppError instances are handled inline; everything else
- * is delegated so the error boundary in app.ts remains the single place
- * that converts unknown failures into sanitised 500 responses.
+ * Responsibilities of this layer (and ONLY this layer):
+ *  1. Parse & validate the raw HTTP request (Zod).
+ *  2. Call the appropriate InvestorService method.
+ *  3. Map the result (or AppError) to an HTTP status + JSON body.
+ *
+ * What this layer must NOT do:
+ *  – Talk to the database directly
+ *  – Contain any business logic
+ *  – Call res.status(500) — unknown errors are forwarded to next()
  */
 
 import { Router, Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
+import { InvestorService } from "../services/investorService";
+import { PgInvestorRepository } from "../repositories/investorRepository";
 import { AppError } from "../lib/AppError";
 import { logger } from "../lib/logger";
 import {
   investorCreateSchema,
   investorIdParamSchema,
 } from "../validators/investorSchema";
-import {
-  createInvestor,
-  findInvestorById,
-} from "../repositories/investorRepository";
 import type {
   CreateInvestorRequestBody,
   CreateInvestorResponse,
@@ -34,10 +34,16 @@ import type {
   GetInvestorResponse,
 } from "../types/api";
 
+// ── Composition root ─────────────────────────────────────────
+// Instantiated once at module load; swap PgInvestorRepository for a
+// MockInvestorRepository in integration tests by re-requiring this
+// module with dependency injection or by using a test-scoped factory.
+const service = new InvestorService(new PgInvestorRepository());
+
 const router = Router();
 
 // ─────────────────────────────────────────────────────────────
-//  Utility: flatten ZodError issues into { field: firstMessage }
+//  Utility
 // ─────────────────────────────────────────────────────────────
 
 function zodIssueMap(err: ZodError): Record<string, string> {
@@ -53,11 +59,6 @@ function zodIssueMap(err: ZodError): Record<string, string> {
 
 // ─────────────────────────────────────────────────────────────
 //  POST /api/v1/investors
-//
-//  201 – Investor created; returns the full persisted record.
-//  400 – Payload failed Zod validation (with per-field feedback).
-//  409 – Duplicate email address.
-//  500 – Unexpected internal error (forwarded to global handler).
 // ─────────────────────────────────────────────────────────────
 
 router.post(
@@ -67,32 +68,24 @@ router.post(
     res: Response<CreateInvestorResponse>,
     next: NextFunction
   ): Promise<void> => {
-    // ── 1. Validate & parse the request body ──────────────────
+    // 1. Validate
     const parseResult = investorCreateSchema.safeParse(req.body);
-
     if (!parseResult.success) {
-      const fields = zodIssueMap(parseResult.error);
       res.status(400).json(
-        AppError.validationError(fields).toResponse()
+        AppError.validationError(zodIssueMap(parseResult.error)).toResponse()
       );
       return;
     }
 
-    const input = parseResult.data;
-
+    // 2. Orchestrate
     try {
-      // ── 2. Persist via repository (throws typed AppErrors) ───
-      const investor = await createInvestor(input);
-
+      const investor = await service.createInvestor(parseResult.data);
       res.status(201).json({ success: true, data: investor });
     } catch (err: unknown) {
       if (err instanceof AppError) {
-        // 409 Conflict (duplicate email) handled inline.
-        // Any other AppError status is also handled here cleanly.
         res.status(err.statusCode).json(err.toResponse());
         return;
       }
-      // Delegate unexpected errors to the global error handler.
       next(err);
     }
   }
@@ -100,11 +93,6 @@ router.post(
 
 // ─────────────────────────────────────────────────────────────
 //  GET /api/v1/investors/:id
-//
-//  200 – Investor found; returns the full record.
-//  400 – :id is not a valid UUIDv4.
-//  404 – No investor exists for the given id.
-//  500 – Unexpected internal error (forwarded to global handler).
 // ─────────────────────────────────────────────────────────────
 
 router.get(
@@ -114,30 +102,24 @@ router.get(
     res: Response<GetInvestorResponse>,
     next: NextFunction
   ): Promise<void> => {
-    // ── 1. Validate the :id path parameter ────────────────────
+    // 1. Validate path param
     const paramResult = investorIdParamSchema.safeParse(req.params);
-
     if (!paramResult.success) {
-      res.status(400).json(
-        AppError.invalidUuid("id").toResponse()
-      );
+      res.status(400).json(AppError.invalidUuid("id").toResponse());
       return;
     }
 
-    const { id } = paramResult.data;
-
+    // 2. Orchestrate
     try {
-      // ── 2. Fetch from repository ───────────────────────────
-      const investor = await findInvestorById(id);
-
+      const investor = await service.getInvestorById(paramResult.data.id);
       if (investor === null) {
         res.status(404).json(
-          AppError.notFound("Investor", id).toResponse()
+          AppError.notFound("Investor", paramResult.data.id).toResponse()
         );
         return;
       }
 
-      logger.debug({ investorId: id }, "investor.fetched");
+      logger.debug({ investorId: paramResult.data.id }, "investor.fetched");
       res.status(200).json({ success: true, data: investor });
     } catch (err: unknown) {
       if (err instanceof AppError) {

@@ -1,0 +1,20 @@
+{
+  "name": "meridian",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Meridian Investor Platform – npm workspace monorepo",
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=packages/shared && npm run build --workspace=backend && npm run build --workspace=frontend",
+    "typecheck": "tsc --build packages/shared/tsconfig.json backend/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
