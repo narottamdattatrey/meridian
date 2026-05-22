@@ -20,6 +20,7 @@ import React, {
   useRef,
   type FormEvent,
 } from "react";
+import OtpVerification from "../OtpVerification";
 import { ZodError } from "zod";
 import { investorFormSchema, type InvestorFormValues } from "../../validators/investorSchema";
 import { submitInvestorOnboarding } from "../../api/investorApi";
@@ -31,6 +32,7 @@ type FieldErrors = Partial<Record<keyof InvestorFormValues, string>>;
 type FormState =
   | { phase: "idle"; fields: InvestorFormValues; errors: FieldErrors; touched: Partial<Record<keyof InvestorFormValues, boolean>>; submitError: string | null }
   | { phase: "submitting"; fields: InvestorFormValues }
+  | { phase: "otp_pending"; investor: InvestorRecord }
   | { phase: "success"; investor: InvestorRecord }
   | { phase: "error"; fields: InvestorFormValues; errors: FieldErrors; submitError: string };
 
@@ -40,6 +42,7 @@ type FormAction =
   | { type: "SET_FIELD_ERRORS"; errors: FieldErrors }
   | { type: "SUBMIT" }
   | { type: "SUBMIT_SUCCESS"; investor: InvestorRecord }
+  | { type: "OTP_VERIFIED" }
   | { type: "SUBMIT_FAILURE"; submitError: string; fieldErrors?: FieldErrors };
 
 const EMPTY_FIELDS: InvestorFormValues = {
@@ -107,7 +110,11 @@ function formReducer(state: FormState, action: FormAction): FormState {
       return { phase: "submitting", fields: state.fields };
 
     case "SUBMIT_SUCCESS":
-      return { phase: "success", investor: action.investor };
+      return { phase: "otp_pending", investor: action.investor };
+
+    case "OTP_VERIFIED":
+      if (state.phase !== "otp_pending") return state;
+      return { phase: "success", investor: state.investor };
 
     case "SUBMIT_FAILURE":
       return {
@@ -187,7 +194,7 @@ interface StepIndicatorProps {
   current: 1 | 2 | 3;
 }
 
-const STEPS = ["Your Details", "Review", "Confirmed"] as const;
+const STEPS = ["Your Details", "Verify Email", "Confirmed"] as const;
 
 const StepIndicator: React.FC<StepIndicatorProps> = ({ current }) => (
   <div className="step-indicator mb-4" aria-label="Onboarding progress">
@@ -294,7 +301,7 @@ const OnboardingForm: React.FC = () => {
     state.phase === "submitting" || state.phase === "success";
 
   const currentFields: InvestorFormValues =
-    state.phase === "success" || state.phase === "submitting"
+    state.phase === "success" || state.phase === "submitting" || state.phase === "otp_pending"
       ? EMPTY_FIELDS
       : state.fields;
 
@@ -394,6 +401,21 @@ const OnboardingForm: React.FC = () => {
 
     dispatch({ type: "SUBMIT_FAILURE", submitError: result.error.message });
   };
+
+  // ── OTP verification view ─────────────────────────────────
+  if (state.phase === "otp_pending") {
+    return (
+      <div className="card shadow-sm">
+        <div className="card-body">
+          <StepIndicator current={2} />
+          <OtpVerification
+            investor={state.investor}
+            onVerified={() => dispatch({ type: "OTP_VERIFIED" })}
+          />
+        </div>
+      </div>
+    );
+  }
 
   // ── Success view ────────────────────────────────────────────
   if (state.phase === "success") {

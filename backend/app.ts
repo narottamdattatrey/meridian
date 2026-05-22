@@ -24,6 +24,7 @@ import express, {
 import cors from "cors";
 import helmet from "helmet";
 import investorsRouter from "./routes/investors";
+import authRouter from "./routes/auth";
 import { AppError } from "./lib/AppError";
 import { logger } from "./lib/logger";
 
@@ -58,6 +59,7 @@ export function createApp(): Application {
   app.use(json({ limit: "64kb" }));
 
   // ── Routes ────────────────────────────────────────────────────
+  app.use("/api/auth", authRouter);
   app.use("/api/v1/investors", investorsRouter);
 
   // ── 404 catch-all ────────────────────────────────────────────

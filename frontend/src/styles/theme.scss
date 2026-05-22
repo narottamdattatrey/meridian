@@ -131,3 +131,44 @@ $body-color: #334155;  // Slate-700 – readable body text
   font-size: 0.8125rem;
   letter-spacing: 0.08em;
 }
+
+// OTP digit input boxes (Step 2 — email verification)
+.otp-input {
+  width: 3rem;
+  height: 3.5rem;
+  padding: 0;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 2px solid $border-color;
+  border-radius: $border-radius-sm;
+  background-color: #fff;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+
+  &:focus {
+    border-color: $primary;
+    box-shadow: 0 0 0 0.2rem rgba($primary, 0.2);
+    outline: 0;
+  }
+
+  &.is-filled {
+    border-color: $primary;
+    background-color: rgba($primary, 0.04);
+  }
+
+  &.is-invalid {
+    border-color: $danger;
+
+    &:focus {
+      box-shadow: 0 0 0 0.2rem rgba($danger, 0.2);
+    }
+  }
+
+  &:disabled {
+    background-color: $light;
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+

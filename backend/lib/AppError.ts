@@ -27,6 +27,7 @@
 export type AppErrorCode =
   | "VALIDATION_ERROR"
   | "INVALID_UUID"
+  | "INVALID_OTP"
   | "NOT_FOUND"
   | "DUPLICATE_EMAIL"
   | "CONSTRAINT_VIOLATION"
@@ -45,10 +46,6 @@ export class AppError extends Error {
   public readonly statusCode: number;
   public readonly code: AppErrorCode;
   public readonly fields: Record<string, string> | undefined;
-  /**
-   * The original low-level error (e.g. a DatabaseError or ZodError).
-   * NEVER serialised to the client. Logged server-side only.
-   */
   public readonly cause: unknown;
 
   constructor(
@@ -117,6 +114,17 @@ export class AppError extends Error {
           email:
             "An account with this email address already exists.",
         },
+      }
+    );
+  }
+
+  static invalidOtp(): AppError {
+    return new AppError(
+      400,
+      "INVALID_OTP",
+      "Invalid verification code. Please check your email and try again.",
+      {
+        fields: { code: "Invalid or expired verification code." },
       }
     );
   }

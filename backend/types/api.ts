@@ -27,3 +27,10 @@ export interface GetInvestorSuccessResponse {
 export type GetInvestorResponse =
   | GetInvestorSuccessResponse
   | AppErrorResponse;
+
+export interface VerifyOtpSuccessResponse {
+  success: true;
+  data: { verified: true; investorId: string };
+}
+
+export type VerifyOtpResponse = VerifyOtpSuccessResponse | AppErrorResponse;

@@ -27,6 +27,11 @@ export type {
   InvestorIdParam,
 } from "./validators/investorSchema";
 
+// ── OTP ──────────────────────────────────────────────────────
+export { otpCodeSchema, verifyOtpSchema } from "./validators/otpSchema";
+
+export type { VerifyOtpInput } from "./validators/otpSchema";
+
 // ── Constants ────────────────────────────────────────────────
 export {
   SUPPORTED_COUNTRIES,
