@@ -1,15 +1,16 @@
 /**
  * frontend/src/components/OnboardingForm/index.tsx
  *
- * Investor onboarding form.
+ * Investor onboarding form – Bootstrap 5 implementation.
  *
  * Features:
  *  – Zod-powered validation with per-field inline errors
  *  – Validates on blur + on submit (not on every keystroke)
- *  – Loading, success, and error states
+ *  – Loading (spinner-border), success, and error states
  *  – Maps backend 409 DUPLICATE_EMAIL back to the email field
  *  – Maps backend VALIDATION_ERROR field map back to inline errors
  *  – Fully accessible (aria-invalid, aria-describedby, live regions)
+ *  – Zero inline styles – all layout via Bootstrap 5 utility classes
  */
 
 import React, {
@@ -23,7 +24,7 @@ import { ZodError } from "zod";
 import { investorFormSchema, type InvestorFormValues } from "../../validators/investorSchema";
 import { submitInvestorOnboarding } from "../../api/investorApi";
 import { SUPPORTED_COUNTRIES } from "../../constants/countries";
-import type { InvestorRecord } from "../../types/api";
+import type { InvestorRecord } from "@meridian/shared";
 
 // ─────────────────────────────────────────────────────────────
 //  State machine
@@ -66,12 +67,13 @@ function formReducer(state: FormState, action: FormAction): FormState {
       if (state.phase === "submitting" || state.phase === "success") return state;
       const fields = { ...state.fields, [action.field]: action.value };
 
-      // Re-validate the changed field if it's been touched
       const isTouched =
         state.phase === "error" ||
         (state.phase === "idle" && state.touched[action.field]);
 
-      let errors = state.phase === "idle" ? state.errors : (state as Extract<FormState, { phase: "error" }>).errors;
+      let errors = state.phase === "idle"
+        ? state.errors
+        : (state as Extract<FormState, { phase: "error" }>).errors;
 
       if (isTouched) {
         const result = investorFormSchema.shape[action.field].safeParse(action.value);
@@ -90,8 +92,6 @@ function formReducer(state: FormState, action: FormAction): FormState {
     case "TOUCH_FIELD": {
       if (state.phase !== "idle") return state;
       const touched = { ...state.touched, [action.field]: true };
-
-      // Validate on blur
       const result = investorFormSchema.shape[action.field].safeParse(
         state.fields[action.field]
       );
@@ -99,7 +99,6 @@ function formReducer(state: FormState, action: FormAction): FormState {
         ...state.errors,
         [action.field]: result.success ? undefined : result.error.issues[0]?.message,
       };
-
       return { ...state, touched, errors };
     }
 
@@ -135,10 +134,24 @@ interface FieldWrapperProps {
   id: string;
   label: string;
   error?: string | undefined;
-  required?: boolean;
+  required?: boolean | undefined;
   children: React.ReactNode;
 }
 
+/**
+ * Bootstrap form-group wrapper.
+ *
+ * Renders:
+ *   <div class="mb-3">
+ *     <label class="form-label fw-medium">…</label>
+ *     {children}                       ← Input / Select
+ *     <div class="invalid-feedback">…  ← Only when error is set
+ *   </div>
+ *
+ * The .invalid-feedback div is always rendered in the DOM so Bootstrap's
+ * CSS transition plays smoothly; it becomes visible when the sibling
+ * control carries .is-invalid.
+ */
 const FieldWrapper: React.FC<FieldWrapperProps> = ({
   id,
   label,
@@ -146,21 +159,23 @@ const FieldWrapper: React.FC<FieldWrapperProps> = ({
   required = false,
   children,
 }) => (
-  <div className="flex flex-col gap-1">
-    <label htmlFor={id} className="text-sm font-medium text-gray-700">
+  <div className="mb-3">
+    <label htmlFor={id} className="form-label fw-medium mb-1">
       {label}
       {required && (
-        <span className="ml-1 text-red-500" aria-hidden="true">
-          *
-        </span>
+        <span className="text-danger ms-1" aria-hidden="true">*</span>
       )}
     </label>
     {children}
-    {error && (
-      <p id={`${id}-error`} role="alert" className="text-xs text-red-600 mt-0.5">
-        {error}
-      </p>
-    )}
+    {/* invalid-feedback must follow the form-control directly in DOM order */}
+    <div
+      id={`${id}-error`}
+      className="invalid-feedback d-block"
+      role={error ? "alert" : undefined}
+      aria-live="polite"
+    >
+      {error ?? ""}
+    </div>
   </div>
 );
 
@@ -169,21 +184,66 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string | undefined;
 }
 
-const Input: React.FC<InputProps> = ({ id, error, ...rest }) => (
+/**
+ * Bootstrap-styled text input.
+ *
+ * – .form-control gives padding, border, and focus ring from theme.scss tokens
+ * – .is-invalid activates red border + makes .invalid-feedback visible
+ */
+const Input: React.FC<InputProps> = ({ id, error, className, ...rest }) => (
   <input
     id={id}
     aria-invalid={error ? "true" : "false"}
     aria-describedby={error ? `${id}-error` : undefined}
-    className={[
-      "w-full rounded-lg border px-3 py-2 text-sm shadow-sm",
-      "focus:outline-none focus:ring-2",
-      error
-        ? "border-red-400 focus:ring-red-300"
-        : "border-gray-300 focus:ring-indigo-400",
-      rest.disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white",
-    ].join(" ")}
+    className={["form-control", error ? "is-invalid" : "", className ?? ""]
+      .filter(Boolean)
+      .join(" ")}
     {...rest}
   />
+);
+
+// ─────────────────────────────────────────────────────────────
+//  Step progress indicator  (3 steps: Details → Review → Done)
+// ─────────────────────────────────────────────────────────────
+
+interface StepIndicatorProps {
+  /** 1-based current step index */
+  current: 1 | 2 | 3;
+}
+
+const STEPS = ["Your Details", "Review", "Confirmed"] as const;
+
+const StepIndicator: React.FC<StepIndicatorProps> = ({ current }) => (
+  <div className="step-indicator mb-4" aria-label="Onboarding progress">
+    {STEPS.map((label, i) => {
+      const step = (i + 1) as 1 | 2 | 3;
+      const isDone = step < current;
+      const isActive = step === current;
+      return (
+        <React.Fragment key={label}>
+          {i > 0 && (
+            <div
+              className={`step-connector${isDone ? " done" : ""}`}
+              aria-hidden="true"
+            />
+          )}
+          <div
+            className={`step${isActive ? " active" : ""}${isDone ? " done" : ""}`}
+            aria-label={`Step ${step}: ${label}${isDone ? " (completed)" : isActive ? " (current)" : ""}`}
+          >
+            {isDone ? (
+              // Checkmark SVG – inline, aria-hidden, no colour utilities needed
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                <path d="M1.5 6.5l3 3 6-6" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              step
+            )}
+          </div>
+        </React.Fragment>
+      );
+    })}
+  </div>
 );
 
 // ─────────────────────────────────────────────────────────────
@@ -191,43 +251,55 @@ const Input: React.FC<InputProps> = ({ id, error, ...rest }) => (
 // ─────────────────────────────────────────────────────────────
 
 const SuccessScreen: React.FC<{ investor: InvestorRecord }> = ({ investor }) => (
-  <div
-    role="status"
-    aria-live="polite"
-    className="flex flex-col items-center gap-4 py-10 text-center"
-  >
-    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+  <div role="status" aria-live="polite" className="text-center py-4">
+    {/* Success icon badge */}
+    <div className="d-inline-flex align-items-center justify-content-center rounded-circle bg-success bg-opacity-10 p-3 mb-3">
       <svg
-        className="h-8 w-8 text-green-600"
-        fill="none"
+        width="32"
+        height="32"
         viewBox="0 0 24 24"
+        fill="none"
         stroke="currentColor"
-        strokeWidth={2}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-success"
         aria-hidden="true"
       >
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        <path d="M20 6L9 17l-5-5" />
       </svg>
     </div>
-    <h2 className="text-xl font-semibold text-gray-900">Application Received</h2>
-    <p className="max-w-sm text-sm text-gray-600">
-      Welcome, <strong>{investor.full_name}</strong>. Your application has been submitted
-      and is pending KYC review. We'll contact you at{" "}
-      <strong>{investor.email}</strong>.
+
+    <h2 className="h4 fw-bold text-dark mb-2">Application Received</h2>
+    <p className="text-secondary mb-4">
+      Welcome, <strong className="text-dark">{investor.full_name}</strong>.
+      Your application is pending KYC review. We&apos;ll contact you at{" "}
+      <strong className="text-dark">{investor.email}</strong>.
     </p>
-    <dl className="mt-2 w-full max-w-xs rounded-lg border border-gray-200 bg-gray-50 p-4 text-left text-xs text-gray-500">
-      <div className="flex justify-between py-1">
-        <dt className="font-medium">Reference ID</dt>
-        <dd className="font-mono">{investor.id.split("-")[0]?.toUpperCase()}</dd>
-      </div>
-      <div className="flex justify-between py-1">
-        <dt className="font-medium">Status</dt>
-        <dd className="capitalize">{investor.status.replace("_", " ")}</dd>
-      </div>
-      <div className="flex justify-between py-1">
-        <dt className="font-medium">Country</dt>
-        <dd>{investor.country}</dd>
-      </div>
-    </dl>
+
+    {/* Summary table – Bootstrap list-group flush */}
+    <ul className="list-group list-group-flush border rounded text-start small">
+      <li className="list-group-item d-flex justify-content-between align-items-center">
+        <span className="fw-medium text-secondary">Reference ID</span>
+        <span className="ref-chip text-dark">
+          {investor.id.split("-")[0]?.toUpperCase()}
+        </span>
+      </li>
+      <li className="list-group-item d-flex justify-content-between align-items-center">
+        <span className="fw-medium text-secondary">Status</span>
+        <span className="badge bg-warning text-dark text-capitalize">
+          {investor.status.replace("_", " ")}
+        </span>
+      </li>
+      <li className="list-group-item d-flex justify-content-between align-items-center">
+        <span className="fw-medium text-secondary">Country</span>
+        <span className="text-dark">{investor.country}</span>
+      </li>
+      <li className="list-group-item d-flex justify-content-between align-items-center">
+        <span className="fw-medium text-secondary">Date of Birth</span>
+        <span className="text-dark">{investor.date_of_birth}</span>
+      </li>
+    </ul>
   </div>
 );
 
@@ -277,10 +349,8 @@ const OnboardingForm: React.FC = () => {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     if (isDisabled) return;
 
-    // Full client-side validation before network call
     const parseResult = investorFormSchema.safeParse(currentFields);
 
     if (!parseResult.success) {
@@ -296,19 +366,16 @@ const OnboardingForm: React.FC = () => {
 
       dispatch({ type: "SET_FIELD_ERRORS", errors });
 
-      // Focus the first errored field for accessibility
       const firstKey = Object.keys(errors)[0];
       if (firstKey) {
         const el = document.getElementById(fieldId(firstKey));
         (el as HTMLElement | null)?.focus();
         firstErrorRef.current = el;
       }
-
       return;
     }
 
     dispatch({ type: "SUBMIT" });
-
     const result = await submitInvestorOnboarding(parseResult.data);
 
     if (result.success) {
@@ -316,7 +383,6 @@ const OnboardingForm: React.FC = () => {
       return;
     }
 
-    // Map structured backend errors back to the form
     if (result.error.code === "DUPLICATE_EMAIL") {
       dispatch({
         type: "SUBMIT_FAILURE",
@@ -326,7 +392,6 @@ const OnboardingForm: React.FC = () => {
             "An account with this email already exists. Please sign in or use a different address.",
         },
       });
-
       const el = document.getElementById(fieldId("email"));
       (el as HTMLElement | null)?.focus();
       return;
@@ -351,49 +416,65 @@ const OnboardingForm: React.FC = () => {
       return;
     }
 
-    dispatch({
-      type: "SUBMIT_FAILURE",
-      submitError: result.error.message,
-    });
+    dispatch({ type: "SUBMIT_FAILURE", submitError: result.error.message });
   };
 
+  // ── Success view ────────────────────────────────────────────
   if (state.phase === "success") {
     return (
-      <div className="mx-auto w-full max-w-md">
-        <SuccessScreen investor={state.investor} />
+      <div className="card shadow-sm">
+        <div className="card-body">
+          <StepIndicator current={3} />
+          <SuccessScreen investor={state.investor} />
+        </div>
       </div>
     );
   }
 
+  // ── Form view ───────────────────────────────────────────────
   return (
-    <div className="mx-auto w-full max-w-md">
-      {/* Card */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-lg">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-            Investor Onboarding
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
+    <div className="card shadow-sm">
+      <div className="card-body">
+        <StepIndicator current={1} />
+
+        {/* Card header */}
+        <div className="mb-4">
+          <h1 className="h4 fw-bold text-dark mb-1">Investor Onboarding</h1>
+          <p className="text-secondary small mb-0">
             Create your investor account. All fields are required.
           </p>
         </div>
 
-        {/* Global submit error (non-field) */}
+        {/* Global submit error alert */}
         {submitError && (
           <div
             role="alert"
             aria-live="assertive"
-            className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            className="alert alert-danger d-flex align-items-start gap-2 py-2 mb-4"
           >
-            {submitError}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="flex-shrink-0 mt-1"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>{submitError}</span>
           </div>
         )}
 
         <form
           noValidate
           onSubmit={(e) => { void handleSubmit(e); }}
-          className="flex flex-col gap-5"
         >
           {/* Full Name */}
           <FieldWrapper
@@ -437,124 +518,108 @@ const OnboardingForm: React.FC = () => {
             />
           </FieldWrapper>
 
-          {/* Date of Birth */}
-          <FieldWrapper
-            id={fieldId("date_of_birth")}
-            label="Date of Birth"
-            error={currentErrors.date_of_birth}
-            required
-          >
-            <Input
-              id={fieldId("date_of_birth")}
-              type="date"
-              name="date_of_birth"
-              autoComplete="bday"
-              max={new Date().toISOString().split("T")[0]}
-              value={currentFields.date_of_birth}
-              onChange={handleChange("date_of_birth")}
-              onBlur={handleBlur("date_of_birth")}
-              disabled={isDisabled}
-              error={currentErrors.date_of_birth}
-            />
-          </FieldWrapper>
+          {/* Date of Birth + Country – side by side on md+ */}
+          <div className="row g-3">
+            <div className="col-12 col-md-6">
+              <FieldWrapper
+                id={fieldId("date_of_birth")}
+                label="Date of Birth"
+                error={currentErrors.date_of_birth}
+                required
+              >
+                <Input
+                  id={fieldId("date_of_birth")}
+                  type="date"
+                  name="date_of_birth"
+                  autoComplete="bday"
+                  max={new Date().toISOString().split("T")[0]}
+                  value={currentFields.date_of_birth}
+                  onChange={handleChange("date_of_birth")}
+                  onBlur={handleBlur("date_of_birth")}
+                  disabled={isDisabled}
+                  error={currentErrors.date_of_birth}
+                />
+              </FieldWrapper>
+            </div>
 
-          {/* Country */}
-          <FieldWrapper
-            id={fieldId("country")}
-            label="Country of Residence"
-            error={currentErrors.country}
-            required
-          >
-            <select
-              id={fieldId("country")}
-              name="country"
-              autoComplete="country"
-              value={currentFields.country}
-              onChange={handleChange("country")}
-              onBlur={handleBlur("country")}
-              disabled={isDisabled}
-              aria-invalid={currentErrors.country ? "true" : "false"}
-              aria-describedby={
-                currentErrors.country ? `${fieldId("country")}-error` : undefined
-              }
-              className={[
-                "w-full rounded-lg border px-3 py-2 text-sm shadow-sm",
-                "focus:outline-none focus:ring-2",
-                currentErrors.country
-                  ? "border-red-400 focus:ring-red-300"
-                  : "border-gray-300 focus:ring-indigo-400",
-                isDisabled
-                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                  : "bg-white",
-              ].join(" ")}
-            >
-              <option value="">Select a country…</option>
-              {SUPPORTED_COUNTRIES.map(({ code, label }) => (
-                <option key={code} value={code}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </FieldWrapper>
-
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={isDisabled}
-            aria-busy={state.phase === "submitting"}
-            className={[
-              "mt-2 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5",
-              "text-sm font-semibold text-white shadow-sm transition-colors",
-              "focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2",
-              isDisabled
-                ? "cursor-not-allowed bg-indigo-400"
-                : "bg-indigo-600 hover:bg-indigo-700",
-            ].join(" ")}
-          >
-            {state.phase === "submitting" ? (
-              <>
-                {/* Spinner */}
-                <svg
-                  className="h-4 w-4 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
+            <div className="col-12 col-md-6">
+              <FieldWrapper
+                id={fieldId("country")}
+                label="Country of Residence"
+                error={currentErrors.country}
+                required
+              >
+                <select
+                  id={fieldId("country")}
+                  name="country"
+                  autoComplete="country"
+                  value={currentFields.country}
+                  onChange={handleChange("country")}
+                  onBlur={handleBlur("country")}
+                  disabled={isDisabled}
+                  aria-invalid={currentErrors.country ? "true" : "false"}
+                  aria-describedby={
+                    currentErrors.country
+                      ? `${fieldId("country")}-error`
+                      : undefined
+                  }
+                  className={[
+                    "form-select",
+                    currentErrors.country ? "is-invalid" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
+                  <option value="">Select a country…</option>
+                  {SUPPORTED_COUNTRIES.map(({ code, label }) => (
+                    <option key={code} value={code}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </FieldWrapper>
+            </div>
+          </div>
+
+          {/* Submit button */}
+          <div className="mt-2">
+            <button
+              type="submit"
+              disabled={isDisabled}
+              aria-busy={state.phase === "submitting"}
+              className="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2"
+            >
+              {state.phase === "submitting" ? (
+                <>
+                  <span
+                    className="spinner-border spinner-border-sm"
+                    role="status"
+                    aria-hidden="true"
                   />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                  />
-                </svg>
-                Submitting…
-              </>
-            ) : (
-              "Create Account"
-            )}
-          </button>
+                  <span>Submitting…</span>
+                </>
+              ) : (
+                "Create Account"
+              )}
+            </button>
+          </div>
         </form>
       </div>
 
-      <p className="mt-4 text-center text-xs text-gray-400">
-        By submitting you agree to our{" "}
-        <a href="/terms" className="underline hover:text-indigo-600">
-          Terms of Service
-        </a>{" "}
-        and{" "}
-        <a href="/privacy" className="underline hover:text-indigo-600">
-          Privacy Policy
-        </a>
-        .
-      </p>
+      {/* Card footer – legal links */}
+      <div className="card-footer bg-transparent text-center border-top-0 pb-3 pt-0">
+        <p className="text-secondary small mb-0">
+          By submitting you agree to our{" "}
+          <a href="/terms" className="text-primary text-decoration-none fw-medium">
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a href="/privacy" className="text-primary text-decoration-none fw-medium">
+            Privacy Policy
+          </a>
+          .
+        </p>
+      </div>
     </div>
   );
 };

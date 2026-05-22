@@ -22,7 +22,7 @@ export class HttpError extends Error {
 export async function submitInvestorOnboarding(
   payload: InvestorFormValues
 ): Promise<ApiResponse> {
-  const url = `${API_BASE}/api/v1/investors/onboard`;
+  const url = `${API_BASE}/api/v1/investors`;
 
   let response: Response;
 

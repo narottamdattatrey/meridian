@@ -1,0 +1,22 @@
+[
+  {
+    "id": "93c4d6cb-292c-42f6-964f-84079673682d",
+    "full_name": "Narottam Dattatrey",
+    "email": "narottamdattatria@gmail.com",
+    "date_of_birth": "2001-06-05",
+    "country": "AE",
+    "status": "PENDING",
+    "created_at": "2026-05-22T11:07:14.912Z",
+    "updated_at": "2026-05-22T11:07:14.912Z"
+  },
+  {
+    "id": "ca76d3a1-8b3c-4849-ab64-273135a5fd62",
+    "full_name": "Narottam Dattatrey",
+    "email": "narottamdattatria1@gmail.com",
+    "date_of_birth": "1999-02-02",
+    "country": "AE",
+    "status": "pending_kyc",
+    "created_at": "2026-05-22T11:09:27.273Z",
+    "updated_at": "2026-05-22T11:09:27.273Z"
+  }
+]

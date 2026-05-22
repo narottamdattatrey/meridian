@@ -1,0 +1,157 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// frontend/src/styles/theme.scss
+//
+// Centralised Bootstrap 5 theme for Meridian – a professional fintech product.
+//
+// Pattern: override Bootstrap's Sass variables BEFORE @use "bootstrap" so the
+// entire token system (maps, component defaults, utility API) cascades from
+// these values automatically.  No !important, no duplicate classes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── 1. Brand palette ──────────────────────────────────────────────────────────
+// Deep navy primary keeps it legible on white cards; a teal accent used only
+// in focus rings and badges so it doesn't compete with the primary CTA.
+
+$primary:   #1a3a5c;   // Meridian navy
+$secondary: #5c7a9f;   // Steel blue – secondary actions
+$success:   #1a7a4a;   // Forest green – confirmation states
+$danger:    #c0392b;   // Clear red – validation errors
+$warning:   #d97706;   // Amber – soft warnings
+$info:      #0e7490;   // Teal – informational
+$light:     #f8fafc;   // Off-white page background
+$dark:      #0f172a;   // Near-black headings
+
+// ── 2. Typography ─────────────────────────────────────────────────────────────
+$font-family-sans-serif: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+$font-size-base:         0.9375rem;   // 15px – slightly tighter than BS default
+$line-height-base:       1.6;
+$headings-font-weight:   700;
+$headings-color:         $dark;
+
+// ── 3. Border & radius ────────────────────────────────────────────────────────
+$border-color:           #d1dae6;
+$border-radius:          0.5rem;     // cards, alerts
+$border-radius-sm:       0.375rem;   // inputs, badges
+$border-radius-lg:       0.75rem;    // modals, large cards
+
+// ── 4. Form controls ──────────────────────────────────────────────────────────
+$input-border-color:          $border-color;
+$input-border-radius:         $border-radius-sm;
+$input-focus-border-color:    $primary;
+$input-focus-box-shadow:      0 0 0 0.2rem rgba($primary, 0.2);
+$input-disabled-bg:           #f1f5f9;
+$input-disabled-color:        #94a3b8;
+$input-placeholder-color:     #a0aec0;
+$input-padding-y:             0.5rem;
+$input-padding-x:             0.75rem;
+$input-font-size:             0.9375rem;
+
+$form-select-border-radius:   $border-radius-sm;
+$form-select-focus-box-shadow: $input-focus-box-shadow;
+
+// ── 5. Validation colours ─────────────────────────────────────────────────────
+// Bootstrap derives .is-invalid border + .invalid-feedback text colour from
+// these two tokens.
+$form-feedback-invalid-color: $danger;
+$form-feedback-valid-color:   $success;
+
+// ── 6. Buttons ────────────────────────────────────────────────────────────────
+$btn-border-radius:       $border-radius-sm;
+$btn-font-weight:         600;
+$btn-padding-y:           0.5625rem;   // slightly taller tap target
+$btn-padding-x:           1.25rem;
+$btn-font-size:           0.9375rem;
+$btn-transition:          color .15s ease, background-color .15s ease,
+                          border-color .15s ease, box-shadow .15s ease;
+
+// ── 7. Cards ──────────────────────────────────────────────────────────────────
+$card-border-color:       $border-color;
+$card-border-radius:      $border-radius;
+$card-cap-bg:             transparent;
+$card-spacer-y:           2rem;
+$card-spacer-x:           2rem;
+$card-box-shadow:         0 4px 24px rgba(15, 23, 42, 0.08);
+
+// ── 8. Alerts ─────────────────────────────────────────────────────────────────
+$alert-border-radius:     $border-radius-sm;
+$alert-padding-y:         0.875rem;
+$alert-padding-x:         1rem;
+
+// ── 9. Spacing scale (keep BS defaults but expose for reference) ──────────────
+// $spacer: 1rem – unchanged; utilities like .mb-3 (16px) remain predictable.
+
+// ── 10. Body ──────────────────────────────────────────────────────────────────
+$body-bg:    $light;
+$body-color: #334155;  // Slate-700 – readable body text
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Import the full Bootstrap library AFTER all variable overrides.
+// Sass's @use hoists variables correctly so every component derives from
+// our theme tokens above.
+// ─────────────────────────────────────────────────────────────────────────────
+@use "bootstrap/scss/bootstrap";
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Component-level extensions
+// Only extends/supplements – never overrides Bootstrap classes with !important.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Smooth focus transition on all interactive elements
+*:focus-visible {
+  outline: 2px solid rgba($primary, 0.6);
+  outline-offset: 2px;
+}
+
+// Progress step indicator used on the multi-step wizard
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0;
+
+  .step {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    border: 2px solid $border-color;
+    background: #fff;
+    color: #94a3b8;
+    transition: background .2s, border-color .2s, color .2s;
+
+    &.active {
+      background: $primary;
+      border-color: $primary;
+      color: #fff;
+    }
+
+    &.done {
+      background: $success;
+      border-color: $success;
+      color: #fff;
+    }
+  }
+
+  .step-connector {
+    flex: 1;
+    height: 2px;
+    background: $border-color;
+    min-width: 2rem;
+
+    &.done {
+      background: $success;
+    }
+  }
+}
+
+// Reference-ID monospace chip on the success screen
+.ref-chip {
+  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+}

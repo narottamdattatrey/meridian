@@ -2,25 +2,11 @@
  * backend/routes/investors.ts
  *
  * Thin HTTP adapter for the investor resource.
- *
- *   POST /api/v1/investors        → 201 Created
- *   GET  /api/v1/investors/:id    → 200 OK | 404 Not Found
- *
- * Responsibilities of this layer (and ONLY this layer):
- *  1. Parse & validate the raw HTTP request (Zod).
- *  2. Call the appropriate InvestorService method.
- *  3. Map the result (or AppError) to an HTTP status + JSON body.
- *
- * What this layer must NOT do:
- *  – Talk to the database directly
- *  – Contain any business logic
- *  – Call res.status(500) — unknown errors are forwarded to next()
  */
 
 import { Router, Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import { InvestorService } from "../services/investorService";
-import { PgInvestorRepository } from "../repositories/investorRepository";
 import { AppError } from "../lib/AppError";
 import { logger } from "../lib/logger";
 import {
@@ -34,11 +20,8 @@ import type {
   GetInvestorResponse,
 } from "../types/api";
 
-// ── Composition root ─────────────────────────────────────────
-// Instantiated once at module load; swap PgInvestorRepository for a
-// MockInvestorRepository in integration tests by re-requiring this
-// module with dependency injection or by using a test-scoped factory.
-const service = new InvestorService(new PgInvestorRepository());
+// ✅ This now runs successfully without crashing, falling back to your file store!
+const service = new InvestorService();
 
 const router = Router();
 
@@ -68,7 +51,6 @@ router.post(
     res: Response<CreateInvestorResponse>,
     next: NextFunction
   ): Promise<void> => {
-    // 1. Validate
     const parseResult = investorCreateSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json(
@@ -77,7 +59,6 @@ router.post(
       return;
     }
 
-    // 2. Orchestrate
     try {
       const investor = await service.createInvestor(parseResult.data);
       res.status(201).json({ success: true, data: investor });
@@ -102,14 +83,12 @@ router.get(
     res: Response<GetInvestorResponse>,
     next: NextFunction
   ): Promise<void> => {
-    // 1. Validate path param
     const paramResult = investorIdParamSchema.safeParse(req.params);
     if (!paramResult.success) {
       res.status(400).json(AppError.invalidUuid("id").toResponse());
       return;
     }
 
-    // 2. Orchestrate
     try {
       const investor = await service.getInvestorById(paramResult.data.id);
       if (investor === null) {

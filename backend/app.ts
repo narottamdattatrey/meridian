@@ -68,10 +68,6 @@ export function createApp(): Application {
   });
 
   // ── Global error handler ──────────────────────────────────────
-  // Express requires the 4-argument signature to recognise this as an
-  // error handler; the eslint disable comment suppresses the unused-var
-  // warning on `_next`.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
     if (err instanceof AppError) {
       // Structured, expected errors: log at warn level (no stack needed).

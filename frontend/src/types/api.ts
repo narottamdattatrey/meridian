@@ -4,18 +4,8 @@
  * Shared API response types used by the frontend HTTP layer.
  */
 
-export type InvestorStatus = "pending_kyc" | "active" | "suspended" | "closed";
+import { InvestorRecord } from "@meridian/shared";
 
-export interface InvestorRecord {
-  id: string;
-  full_name: string;
-  email: string;
-  date_of_birth: string;
-  country: string;
-  status: InvestorStatus;
-  created_at: string;
-  updated_at: string;
-}
 
 export interface ApiSuccessResponse {
   success: true;

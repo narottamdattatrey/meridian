@@ -1,3 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * index.css
+ *
+ * All global styles are governed by src/styles/theme.scss.
+ * This file is intentionally empty – kept so any future
+ * non-Bootstrap global resets can be added here if needed.
+ */

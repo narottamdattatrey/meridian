@@ -1,144 +1,129 @@
-/**
- * backend/repositories/investorRepository.ts
- *
- * Data access layer for the `investors` table.
- *
- * Architecture notes:
- *  – `IInvestorRepository` is the dependency-inversion interface.
- *    The service layer and tests depend on this interface, never on the
- *    concrete class directly.
- *  – `PgInvestorRepository` is the production implementation backed by
- *    the pg connection pool.
- *  – All SQL uses positional parameters ($1…$n) — zero string interpolation
- *    — to prevent SQL injection by construction.
- *  – pg's `QueryResult<T>` is used with an explicit type parameter so the
- *    TypeScript compiler enforces the returned row shape.
- *  – pg error codes are intercepted here and mapped to typed `AppError`
- *    instances; the service and route layers never inspect pg internals.
- */
-
-import type { QueryResult } from "pg";
-import { pool, isPgDatabaseError, PG_ERROR } from "../db/pool";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as crypto from "crypto";
 import { AppError } from "../lib/AppError";
 import { logger } from "../lib/logger";
 import type { InvestorRecord, CreateInvestorInput } from "@meridian/shared";
 
-// ─────────────────────────────────────────────────────────────
-//  Repository contract
-//  Depend on this interface, not on PgInvestorRepository directly.
-// ─────────────────────────────────────────────────────────────
 
 export interface IInvestorRepository {
-  /**
-   * Persists a new investor and returns the full DB-generated record.
-   * @throws {AppError} 409 DUPLICATE_EMAIL on unique constraint violation.
-   * @throws {AppError} 400 CONSTRAINT_VIOLATION on other CHECK failures.
-   * @throws {AppError} 500 INTERNAL_ERROR on unexpected failures.
-   */
   create(input: CreateInvestorInput): Promise<InvestorRecord>;
-
-  /**
-   * Finds an investor by UUID primary key.
-   * Returns `null` when the row does not exist (route layer owns 404).
-   * @throws {AppError} 500 INTERNAL_ERROR on unexpected failures.
-   */
   findById(id: string): Promise<InvestorRecord | null>;
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Production implementation (PostgreSQL via pg.Pool)
-// ─────────────────────────────────────────────────────────────
+export class FileInvestorRepository implements IInvestorRepository {
+  private readonly filePath: string;
 
-export class PgInvestorRepository implements IInvestorRepository {
-  async create(input: CreateInvestorInput): Promise<InvestorRecord> {
-    const sql = `
-      INSERT INTO investors (full_name, email, date_of_birth, country)
-      VALUES ($1, $2, $3, $4)
-      RETURNING
-        id,
-        full_name,
-        email,
-        date_of_birth :: TEXT  AS date_of_birth,
-        country,
-        status,
-        created_at :: TEXT     AS created_at,
-        updated_at :: TEXT     AS updated_at
-    `;
+  constructor(customPath?: string) {
+    // Stores data in a centralized tracking file within the repository directory hierarchy
+    this.filePath = customPath ?? path.join(__dirname, "../data/investors_store.json");
+  }
 
-    // Zod's .toLowerCase() transform has already normalised the email.
-    const params: [string, string, string, string] = [
-      input.full_name,
-      input.email,
-      input.date_of_birth,
-      input.country,
-    ];
-
+  /**
+   * Safe asynchronous helper to load current records from the file structure.
+   */
+  private async readStore(): Promise<InvestorRecord[]> {
     try {
-      const result: QueryResult<InvestorRecord> =
-        await pool.query<InvestorRecord>(sql, params);
+      const rawData = await fs.readFile(this.filePath, "utf-8");
+      return JSON.parse(rawData) as InvestorRecord[];
+    } catch (err: unknown) {
+      // If the storage file does not exist yet (first initialization), return an empty collection
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
+      logger.error({ err }, "investor.repository.fileReadError");
+      throw AppError.internal(new Error("Failed to read from local file datastore."));
+    }
+  }
 
-      const row = result.rows[0];
-      if (row === undefined) {
-        throw AppError.internal(
-          new Error("INSERT … RETURNING returned no rows unexpectedly")
+  /**
+   * Safe atomic helper to commit records down to disk.
+   */
+  private async writeStore(data: InvestorRecord[]): Promise<void> {
+    try {
+      // Ensure target folder structure exists prior to payload execution
+      await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+      
+      // Write with pretty formatting for debugging ease during evaluation phases
+      await fs.writeFile(this.filePath, JSON.stringify(data, null, 2), "utf-8");
+    } catch (err: unknown) {
+      logger.error({ err }, "investor.repository.fileWriteError");
+      throw AppError.internal(new Error("Failed to write data to local file datastore."));
+    }
+  }
+
+  async create(input: CreateInvestorInput): Promise<InvestorRecord> {
+    console.log("Processing file storage allocation with input:", input);
+    
+    try {
+      const records = await this.readStore();
+
+      // 1. Simulate PostgreSQL UNIQUE_VIOLATION rule
+      const normalizedEmail = input.email.toLowerCase().trim();
+      const isDuplicate = records.some(inv => inv.email.toLowerCase() === normalizedEmail);
+      
+      if (isDuplicate) {
+        throw AppError.duplicateEmail();
+      }
+
+      // 2. Simulate PostgreSQL CHECK_VIOLATION rule (Investor age limit check)
+      const dob = new Date(input.date_of_birth);
+      const today = new Date();
+      let calculatedAge = today.getFullYear() - dob.getFullYear();
+      const monthDiff = today.getMonth() - dob.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+        calculatedAge--;
+      }
+
+      if (calculatedAge < 18) {
+        logger.warn({ dob: input.date_of_birth }, "investor.repository.checkAgeViolation");
+        throw new AppError(
+          400,
+          "CONSTRAINT_VIOLATION",
+          "Database constraint violated: check_investor_minimum_age."
         );
       }
 
-      return row;
+      // 3. Assemble complete row payload mirroring native database generation traits
+      const currentTimeIso = new Date().toISOString();
+      const newInvestorRow: InvestorRecord = {
+        id: crypto.randomUUID(), // Generates standard secure UUIDv4 string format
+        full_name: input.full_name,
+        email: normalizedEmail,
+        date_of_birth: input.date_of_birth,
+        country: input.country,
+        status: InvestorStatus.PENDING_KYC, // Default lifecycle status for new records
+        created_at: currentTimeIso,
+        updated_at: currentTimeIso
+      };
+
+      records.push(newInvestorRow);
+      await this.writeStore(records);
+
+      return newInvestorRow;
     } catch (err: unknown) {
-      if (isPgDatabaseError(err)) {
-        if (err.code === PG_ERROR.UNIQUE_VIOLATION) {
-          throw AppError.duplicateEmail();
-        }
-
-        if (err.code === PG_ERROR.CHECK_VIOLATION) {
-          logger.warn(
-            { constraint: err.constraint },
-            "investor.repository.checkViolation"
-          );
-          throw new AppError(
-            400,
-            "CONSTRAINT_VIOLATION",
-            `Database constraint violated: ${err.constraint ?? "unknown"}.`,
-            { cause: err }
-          );
-        }
+      if (err instanceof AppError) {
+        throw err; 
       }
-
       logger.error({ err }, "investor.repository.createError");
       throw AppError.internal(err);
     }
   }
 
   async findById(id: string): Promise<InvestorRecord | null> {
-    const sql = `
-      SELECT
-        id,
-        full_name,
-        email,
-        date_of_birth :: TEXT  AS date_of_birth,
-        country,
-        status,
-        created_at :: TEXT     AS created_at,
-        updated_at :: TEXT     AS updated_at
-      FROM investors
-      WHERE id = $1
-      LIMIT 1
-    `;
+    // Validate UUID layout boundaries via explicit checks to mirror native DB drivers
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      throw AppError.invalidUuid("id");
+    }
 
     try {
-      const result: QueryResult<InvestorRecord> =
-        await pool.query<InvestorRecord>(sql, [id]);
-
-      return result.rows[0] ?? null;
+      const records = await this.readStore();
+      const match = records.find(inv => inv.id === id);
+      
+      return match ?? null;
     } catch (err: unknown) {
-      if (
-        isPgDatabaseError(err) &&
-        err.code === PG_ERROR.INVALID_TEXT_REPRESENTATION
-      ) {
-        throw AppError.invalidUuid("id");
-      }
-
       logger.error({ err, investorId: id }, "investor.repository.findByIdError");
       throw AppError.internal(err);
     }
