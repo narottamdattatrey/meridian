@@ -18,24 +18,11 @@
 import { z } from "zod";
 import { SUPPORTED_COUNTRY_CODES } from "../constants/countries";
 
-// ─────────────────────────────────────────────────────────────
-//  Internal helper
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Returns the latest date-of-birth that satisfies the 18+ requirement,
- * computed fresh on each call so tests can control `Date.now`.
- */
 const maxAllowedDob = (): Date => {
   const d = new Date();
   d.setFullYear(d.getFullYear() - 18);
   return d;
 };
-
-// ─────────────────────────────────────────────────────────────
-//  Core investor onboarding schema
-//  Used by: POST /investors (backend) + onboarding form (frontend)
-// ─────────────────────────────────────────────────────────────
 
 export const investorSchema = z.object({
   full_name: z
@@ -82,14 +69,7 @@ export const investorSchema = z.object({
     ),
 });
 
-/** Fully validated, post-transform investor input. */
 export type InvestorOnboardingInput = z.infer<typeof investorSchema>;
-
-// ─────────────────────────────────────────────────────────────
-//  UUID path-parameter schema
-//  Used by: GET /investors/:id (backend route layer)
-//  Included here so the backend can import everything from one place.
-// ─────────────────────────────────────────────────────────────
 
 export const investorIdSchema = z.object({
   id: z

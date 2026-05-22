@@ -26,10 +26,6 @@ import { submitInvestorOnboarding } from "../../api/investorApi";
 import { SUPPORTED_COUNTRIES } from "../../constants/countries";
 import type { InvestorRecord } from "@meridian/shared";
 
-// ─────────────────────────────────────────────────────────────
-//  State machine
-// ─────────────────────────────────────────────────────────────
-
 type FieldErrors = Partial<Record<keyof InvestorFormValues, string>>;
 
 type FormState =
@@ -138,20 +134,6 @@ interface FieldWrapperProps {
   children: React.ReactNode;
 }
 
-/**
- * Bootstrap form-group wrapper.
- *
- * Renders:
- *   <div class="mb-3">
- *     <label class="form-label fw-medium">…</label>
- *     {children}                       ← Input / Select
- *     <div class="invalid-feedback">…  ← Only when error is set
- *   </div>
- *
- * The .invalid-feedback div is always rendered in the DOM so Bootstrap's
- * CSS transition plays smoothly; it becomes visible when the sibling
- * control carries .is-invalid.
- */
 const FieldWrapper: React.FC<FieldWrapperProps> = ({
   id,
   label,
@@ -184,12 +166,6 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string | undefined;
 }
 
-/**
- * Bootstrap-styled text input.
- *
- * – .form-control gives padding, border, and focus ring from theme.scss tokens
- * – .is-invalid activates red border + makes .invalid-feedback visible
- */
 const Input: React.FC<InputProps> = ({ id, error, className, ...rest }) => (
   <input
     id={id}

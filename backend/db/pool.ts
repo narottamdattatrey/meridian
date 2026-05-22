@@ -58,23 +58,11 @@ function buildPoolConfig(): PoolConfig {
   };
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Singleton pool
-// ─────────────────────────────────────────────────────────────
-
 export const pool = new Pool(buildPoolConfig());
 
-// Surface pool-level errors (e.g. broken idle connections) without
-// crashing the process – pg emits these on the Pool instance itself.
 pool.on("error", (err: Error) => {
   logger.error({ err }, "pg.Pool idle client error");
 });
-
-// ─────────────────────────────────────────────────────────────
-//  Type guard for pg DatabaseError
-//  (avoids importing the class just for instanceof checks)
-// ─────────────────────────────────────────────────────────────
-
 export interface PgDatabaseError {
   code: string;
   constraint?: string;

@@ -1,17 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// frontend/src/styles/theme.scss
-//
-// Centralised Bootstrap 5 theme for Meridian – a professional fintech product.
-//
-// Pattern: override Bootstrap's Sass variables BEFORE @use "bootstrap" so the
-// entire token system (maps, component defaults, utility API) cascades from
-// these values automatically.  No !important, no duplicate classes.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── 1. Brand palette ──────────────────────────────────────────────────────────
-// Deep navy primary keeps it legible on white cards; a teal accent used only
-// in focus rings and badges so it doesn't compete with the primary CTA.
-
 $primary:   #1a3a5c;   // Meridian navy
 $secondary: #5c7a9f;   // Steel blue – secondary actions
 $success:   #1a7a4a;   // Forest green – confirmation states
@@ -85,20 +71,10 @@ $body-bg:    $light;
 $body-color: #334155;  // Slate-700 – readable body text
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Import the full Bootstrap library AFTER all variable overrides.
-// Sass's @use hoists variables correctly so every component derives from
-// our theme tokens above.
-// ─────────────────────────────────────────────────────────────────────────────
 @use "bootstrap/scss/bootstrap";
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Component-level extensions
-// Only extends/supplements – never overrides Bootstrap classes with !important.
-// ─────────────────────────────────────────────────────────────────────────────
 
-// Smooth focus transition on all interactive elements
 *:focus-visible {
   outline: 2px solid rgba($primary, 0.6);
   outline-offset: 2px;

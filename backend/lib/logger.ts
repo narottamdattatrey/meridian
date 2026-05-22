@@ -22,9 +22,6 @@ const isProduction = process.env["NODE_ENV"] === "production";
 export const logger: Logger = pino(
   {
     level: process.env["LOG_LEVEL"] ?? (isProduction ? "info" : "debug"),
-    // Redact PII fields that may appear in error objects or request bodies.
-    // pino replaces the value with '[Redacted]' rather than omitting the key,
-    // so log structure remains predictable.
     redact: {
       paths: [
         "email",
