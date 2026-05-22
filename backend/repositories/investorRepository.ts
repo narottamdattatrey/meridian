@@ -53,8 +53,6 @@ export class FileInvestorRepository implements IInvestorRepository {
   }
 
   async create(input: CreateInvestorInput): Promise<InvestorRecord> {
-    console.log("Processing file storage allocation with input:", input);
-    
     try {
       const records = await this.readStore();
 
