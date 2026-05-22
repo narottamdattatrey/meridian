@@ -63,7 +63,7 @@ const initialState: FormState = {
 function formReducer(state: FormState, action: FormAction): FormState {
   switch (action.type) {
     case "SET_FIELD": {
-      if (state.phase === "submitting" || state.phase === "success") return state;
+      if (state.phase === "submitting" || state.phase === "success" || state.phase === "otp_pending") return state;
       const fields = { ...state.fields, [action.field]: action.value };
 
       const isTouched =
@@ -106,7 +106,7 @@ function formReducer(state: FormState, action: FormAction): FormState {
       return { ...state, errors: action.errors };
 
     case "SUBMIT":
-      if (state.phase === "submitting" || state.phase === "success") return state;
+      if (state.phase === "submitting" || state.phase === "success" || state.phase === "otp_pending") return state;
       return { phase: "submitting", fields: state.fields };
 
     case "SUBMIT_SUCCESS":
@@ -119,7 +119,7 @@ function formReducer(state: FormState, action: FormAction): FormState {
     case "SUBMIT_FAILURE":
       return {
         phase: "error",
-        fields: state.phase === "success" ? EMPTY_FIELDS : state.fields,
+        fields: state.phase === "success" || state.phase === "otp_pending" ? EMPTY_FIELDS : state.fields,
         errors: action.fieldErrors ?? {},
         submitError: action.submitError,
       };
