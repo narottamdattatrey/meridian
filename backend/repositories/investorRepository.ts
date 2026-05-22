@@ -93,7 +93,7 @@ export class FileInvestorRepository implements IInvestorRepository {
         email: normalizedEmail,
         date_of_birth: input.date_of_birth,
         country: input.country,
-        status: InvestorStatus.PENDING_KYC, // Default lifecycle status for new records
+        status: "pending_kyc",      // Default lifecycle state for new investors
         created_at: currentTimeIso,
         updated_at: currentTimeIso
       };
